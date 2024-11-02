@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Switch, TouchableOpacity, Alert, Image } from 'react-native';
+import { StyleSheet, Text, View, Switch, TouchableOpacity, Alert, Image, Modal, Button } from 'react-native';
 import Voice from '@react-native-voice/voice'; 
 import Slider from '@react-native-community/slider'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Picker } from '@react-native-picker/picker';
 import { database, ref, onValue, set } from './firebase';
 
 export default function App() {
@@ -15,6 +17,10 @@ export default function App() {
   const [commandMessage, setCommandMessage] = useState('');
   const [language, setLanguage] = useState('vi-VN');
   const [isRecording, setIsRecording] = useState(false);
+  const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
+  const [selectedHour, setSelectedHour] = useState("00");
+  const [selectedMinute, setSelectedMinute] = useState("00");
+  const [newScheduleAction, setNewScheduleAction] = useState(false);
 
   useEffect(() => {
     const dbRef = ref(database, '/');
@@ -40,6 +46,20 @@ export default function App() {
       Voice.destroy().then(Voice.removeAllListeners);
     };
   }, []);
+
+  useEffect(() => {
+    loadSchedule();
+
+    const interval = setInterval(() => {
+      const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const scheduledTime = `${selectedHour}:${selectedMinute}`;
+      if (currentTime.startsWith(scheduledTime)) {
+        toggleLedState(newScheduleAction);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [selectedHour, selectedMinute, newScheduleAction]);
 
   const onSpeechResults = (event) => {
     const text = event.value[0];
@@ -91,6 +111,30 @@ export default function App() {
     }
   };
 
+  const loadSchedule = async () => {
+    try {
+      const savedHour = await AsyncStorage.getItem('scheduleHour');
+      const savedMinute = await AsyncStorage.getItem('scheduleMinute');
+      const savedAction = await AsyncStorage.getItem('scheduleAction');
+      if (savedHour) setSelectedHour(savedHour);
+      if (savedMinute) setSelectedMinute(savedMinute);
+      if (savedAction) setNewScheduleAction(savedAction === 'true');
+    } catch (error) {
+      console.error("Error loading schedule:", error);
+    }
+  };
+
+  const saveSchedule = async () => {
+    try {
+      await AsyncStorage.setItem('scheduleHour', selectedHour);
+      await AsyncStorage.setItem('scheduleMinute', selectedMinute);
+      await AsyncStorage.setItem('scheduleAction', newScheduleAction.toString());
+      setScheduleModalVisible(false);
+    } catch (error) {
+      console.error("Error saving schedule:", error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -99,6 +143,11 @@ export default function App() {
           <Image source={require('./assets/111.png')} style={styles.icon} />
           <Text style={styles.headerText}>IOT NHÓM 1</Text>
         </View>
+
+        {/* Nút setup lịch */}
+        <TouchableOpacity onPress={() => setScheduleModalVisible(true)} style={styles.scheduleButton}>
+          <Image source={require('./assets/schedule_icon.png')} style={styles.scheduleIcon} />
+        </TouchableOpacity>
       </View>
 
       {/* Main Content */}
@@ -166,6 +215,46 @@ export default function App() {
         <Text style={styles.commandMessage}>{commandMessage}</Text>
       </View>
 
+      {/* Modal thêm lịch */}
+      <Modal visible={scheduleModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Thêm lịch hẹn giờ</Text>
+
+            <Text>Chọn Giờ:</Text>
+            <Picker
+              selectedValue={selectedHour}
+              style={{ height: 50, width: 100 }}
+              onValueChange={(itemValue) => setSelectedHour(itemValue)}
+            >
+              {Array.from({ length: 24 }).map((_, i) => (
+                <Picker.Item label={i.toString().padStart(2, "0")} value={i.toString().padStart(2, "0")} key={i} />
+              ))}
+            </Picker>
+
+            <Text>Chọn Phút:</Text>
+            <Picker
+              selectedValue={selectedMinute}
+              style={{ height: 50, width: 100 }}
+              onValueChange={(itemValue) => setSelectedMinute(itemValue)}
+            >
+              {Array.from({ length: 60 }).map((_, i) => (
+                <Picker.Item label={i.toString().padStart(2, "0")} value={i.toString().padStart(2, "0")} key={i} />
+              ))}
+            </Picker>
+
+            <View style={styles.switchContainer}>
+              <Text>Trạng thái:</Text>
+              <Switch value={newScheduleAction} onValueChange={setNewScheduleAction} />
+              <Text>{newScheduleAction ? "Mở" : "Đóng"}</Text>
+            </View>
+
+            <Button title="Lưu lịch" onPress={saveSchedule} />
+            <Button title="Đóng" onPress={() => setScheduleModalVisible(false)} />
+          </View>
+        </View>
+      </Modal>
+
       <StatusBar style="auto" />
     </View>
   );
@@ -178,7 +267,7 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
-    backgroundColor: '#d62d20', // Màu đỏ cho header
+    backgroundColor: '#d62d20',
     paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -189,13 +278,22 @@ const styles = StyleSheet.create({
   icon: {
     width: 50, 
     height: 50,
-    borderRadius: 25, // Giữ bo tròn nếu muốn
+    borderRadius: 25,
   },
   headerText: {
     marginTop: 5,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  scheduleButton: {
+    position: 'absolute',
+    right: 10,
+    top: 15,
+  },
+  scheduleIcon: {
+    width: 24,
+    height: 24,
   },
   content: {
     flex: 1,
@@ -269,5 +367,23 @@ const styles = StyleSheet.create({
     color: '#ff4d4d',
     fontWeight: 'bold',
   },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
 });
-
