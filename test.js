@@ -104,7 +104,7 @@ export default function App() {
       {/* Main Content */}
       <View style={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.title}>LIGHT: {lightValue}</Text>
+          <Text style={styles.title}>Ánh sáng: {lightValue}</Text>
           <Slider
             style={styles.slider}
             minimumValue={0}
@@ -117,7 +117,7 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>TEMPERATURE: {temperatureValue}</Text>
+          <Text style={styles.title}>Nhiệt độ: {temperatureValue}</Text>
           <Slider
             style={styles.slider}
             minimumValue={0}
@@ -131,15 +131,15 @@ export default function App() {
 
         <View style={styles.card}>
           <View style={styles.switchContainer}>
-            <Text>ACTIVE LIGHT:</Text>
+            <Text>Tự động đóng mở theo ánh sáng:</Text>
             <Switch value={activeLight} onValueChange={toggleActiveLight} />
           </View>
           <View style={styles.switchContainer}>
-            <Text>ACTIVE TEMPERATURE:</Text>
+            <Text>Tự động đóng mở theo nhiệt độ:</Text>
             <Switch value={activeTemperature} onValueChange={toggleActiveTemperature} />
           </View>
           <View style={styles.switchContainer}>
-            <Text>LED:</Text>
+            <Text>Đóng mở rèm cửa:</Text>
             <Switch value={ledState} onValueChange={() => toggleLedState(!ledState)} />
           </View>
           <View style={styles.switchContainer}>

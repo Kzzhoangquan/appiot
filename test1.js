@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Switch, TouchableOpacity, Alert, Image, Modal, Button } from 'react-native';
+import { StyleSheet, Text, View, Switch, TouchableOpacity, Alert, Image } from 'react-native';
 import Voice from '@react-native-voice/voice'; 
 import Slider from '@react-native-community/slider'; 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { database, ref, onValue, set } from './firebase';
 
@@ -11,16 +10,15 @@ export default function App() {
   const [lightValue, setLightValue] = useState(0);
   const [temperatureValue, setTemperatureValue] = useState(0);
   const [activeLight, setActiveLight] = useState(false);
+  const [activeDistance, setActiveDistance] = useState(false);
   const [activeTemperature, setActiveTemperature] = useState(false);
   const [ledState, setLedState] = useState(false);
   const [recognizedText, setRecognizedText] = useState('');
   const [commandMessage, setCommandMessage] = useState('');
   const [language, setLanguage] = useState('vi-VN');
   const [isRecording, setIsRecording] = useState(false);
-  const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
-  const [selectedHour, setSelectedHour] = useState("00");
-  const [selectedMinute, setSelectedMinute] = useState("00");
-  const [newScheduleAction, setNewScheduleAction] = useState(false);
+  const [mucValue, setMucValue] = useState(0); // Biến để lưu giá trị MUC
+
 
   useEffect(() => {
     const dbRef = ref(database, '/');
@@ -30,13 +28,21 @@ export default function App() {
         setLightValue(data.LIGHT);
         setTemperatureValue(data.TEMPERATURE);
         setActiveLight(data.ACTIVE_LIGHT === 1);
+        setActiveDistance(data.ACTIVE_DISTANCE === 1);
         setActiveTemperature(data.ACTIVE_TEMPERATURE === 1);
         setLedState(data.LED === "ON");
+        setMucValue(data.MUC || 0); // Lấy giá trị MUC từ Firebase
+
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  const updateMucValue = (value) => {
+    setMucValue(value);
+    set(ref(database, 'MUC'), value); // Cập nhật giá trị MUC trên Firebase
+  };
 
   useEffect(() => {
     Voice.onSpeechResults = onSpeechResults;
@@ -47,30 +53,50 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    loadSchedule();
-
-    const interval = setInterval(() => {
-      const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false });
-      const scheduledTime = `${selectedHour}:${selectedMinute}`;
-      if (currentTime.startsWith(scheduledTime)) {
-        toggleLedState(newScheduleAction);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [selectedHour, selectedMinute, newScheduleAction]);
-
   const onSpeechResults = (event) => {
     const text = event.value[0];
     setRecognizedText(text);
 
-    if (text.toLowerCase().includes("open") || text.toLowerCase().includes("mở")) {
-      setCommandMessage("Đã nhận được lệnh mở rèm");
-      toggleLedState(true);
-    } else if (text.toLowerCase().includes("close") || text.toLowerCase().includes("đóng")) {
-      setCommandMessage("Đã nhận được lệnh đóng rèm");
-      toggleLedState(false);
+    if (
+      text.toLowerCase().includes("mở") &&
+      (text.toLowerCase().includes("toàn") ||
+      text.toLowerCase().includes("bộ") ||
+      text.toLowerCase().includes("cả") ||
+      text.toLowerCase().includes("hết"))
+
+      ||
+
+      text.toLowerCase().includes("open") &&
+      text.toLowerCase().includes("all")
+  ) {
+      setCommandMessage("Đã nhận được lệnh mở toàn bộ cửa");
+      // toggleLedState(true);
+      updateMucValue(2);
+    } 
+    else if (
+      // text.toLowerCase().includes("open") || 
+      text.toLowerCase().includes("mở") && (
+      text.toLowerCase().includes("một") ||
+      text.toLowerCase().includes("hé") ||
+      text.toLowerCase().includes("tí") ||
+      text.toLowerCase().includes("nửa"))
+
+      ||
+
+      text.toLowerCase().includes("open") &&
+text.toLowerCase().includes("haft")
+    ) {
+      setCommandMessage("Đã nhận được lệnh mở một nửa cửa");
+
+      updateMucValue(1);
+
+    }
+    
+    else if (text.toLowerCase().includes("close") || text.toLowerCase().includes("đóng")) {
+      setCommandMessage("Đã nhận được lệnh đóng cửa");
+      // toggleLedState(false);
+      updateMucValue(0);
+
     }
   };
 
@@ -89,6 +115,7 @@ export default function App() {
   const handleLightChangeComplete = () => set(ref(database, 'LIGHT'), lightValue);
   const handleTemperatureChangeComplete = () => set(ref(database, 'TEMPERATURE'), temperatureValue);
   const toggleActiveLight = (newValue) => set(ref(database, 'ACTIVE_LIGHT'), newValue ? 1 : 0);
+  const toggleActiveDistance = (newValue) => set(ref(database, 'ACTIVE_DISTANCE'), newValue ? 1 : 0);
   const toggleActiveTemperature = (newValue) => set(ref(database, 'ACTIVE_TEMPERATURE'), newValue ? 1 : 0);
 
   const startRecording = async () => {
@@ -111,43 +138,14 @@ export default function App() {
     }
   };
 
-  const loadSchedule = async () => {
-    try {
-      const savedHour = await AsyncStorage.getItem('scheduleHour');
-      const savedMinute = await AsyncStorage.getItem('scheduleMinute');
-      const savedAction = await AsyncStorage.getItem('scheduleAction');
-      if (savedHour) setSelectedHour(savedHour);
-      if (savedMinute) setSelectedMinute(savedMinute);
-      if (savedAction) setNewScheduleAction(savedAction === 'true');
-    } catch (error) {
-      console.error("Error loading schedule:", error);
-    }
-  };
-
-  const saveSchedule = async () => {
-    try {
-      await AsyncStorage.setItem('scheduleHour', selectedHour);
-      await AsyncStorage.setItem('scheduleMinute', selectedMinute);
-      await AsyncStorage.setItem('scheduleAction', newScheduleAction.toString());
-      setScheduleModalVisible(false);
-    } catch (error) {
-      console.error("Error saving schedule:", error);
-    }
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.iconContainer}>
           <Image source={require('./assets/111.png')} style={styles.icon} />
-          <Text style={styles.headerText}>IOT NHÓM 1</Text>
+          <Text style={styles.headerText}>IOT QUÂN VÀ LONG</Text>
         </View>
-
-        {/* Nút setup lịch */}
-        <TouchableOpacity onPress={() => setScheduleModalVisible(true)} style={styles.scheduleButton}>
-          <Image source={require('./assets/schedule_icon.png')} style={styles.scheduleIcon} />
-        </TouchableOpacity>
       </View>
 
       {/* Main Content */}
@@ -174,7 +172,7 @@ export default function App() {
             step={1}
             value={temperatureValue}
             onValueChange={updateTemperatureValue}
-            onSlidingComplete={handleTemperatureChangeComplete}
+onSlidingComplete={handleTemperatureChangeComplete}
           />
         </View>
 
@@ -184,13 +182,32 @@ export default function App() {
             <Switch value={activeLight} onValueChange={toggleActiveLight} />
           </View>
           <View style={styles.switchContainer}>
+            <Text>ACTIVE DISTANCE:</Text>
+            <Switch value={activeDistance} onValueChange={toggleActiveDistance} />
+          </View>
+          <View style={styles.switchContainer}>
             <Text>ACTIVE TEMPERATURE:</Text>
             <Switch value={activeTemperature} onValueChange={toggleActiveTemperature} />
           </View>
-          <View style={styles.switchContainer}>
-            <Text>LED:</Text>
-            <Switch value={ledState} onValueChange={() => toggleLedState(!ledState)} />
-          </View>
+
+
+
+
+          {/* <View style={styles.card}> */}
+          <Text style={styles.title}>Chọn mức:</Text>
+          <Picker
+            selectedValue={mucValue}
+            style={{ height: 50, width: '100%' }}
+            onValueChange={(itemValue) => updateMucValue(itemValue)}
+          >
+            <Picker.Item label="Đóng cửa" value={0} />
+            <Picker.Item label="Mở một nửa" value={1} />
+            <Picker.Item label="Mở toàn bộ" value={2} />
+          </Picker>
+        {/* </View> */}
+
+
+
           <View style={styles.switchContainer}>
             <Text>Ngôn ngữ: {language === 'vi-VN' ? 'Tiếng Việt' : 'Tiếng Anh'}</Text>
             <Switch value={language === 'en-US'} onValueChange={() => setLanguage(language === 'vi-VN' ? 'en-US' : 'vi-VN')} />
@@ -215,46 +232,6 @@ export default function App() {
         <Text style={styles.commandMessage}>{commandMessage}</Text>
       </View>
 
-      {/* Modal thêm lịch */}
-      <Modal visible={scheduleModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Thêm lịch hẹn giờ</Text>
-
-            <Text>Chọn Giờ:</Text>
-            <Picker
-              selectedValue={selectedHour}
-              style={{ height: 50, width: 100 }}
-              onValueChange={(itemValue) => setSelectedHour(itemValue)}
-            >
-              {Array.from({ length: 24 }).map((_, i) => (
-                <Picker.Item label={i.toString().padStart(2, "0")} value={i.toString().padStart(2, "0")} key={i} />
-              ))}
-            </Picker>
-
-            <Text>Chọn Phút:</Text>
-            <Picker
-              selectedValue={selectedMinute}
-              style={{ height: 50, width: 100 }}
-              onValueChange={(itemValue) => setSelectedMinute(itemValue)}
-            >
-              {Array.from({ length: 60 }).map((_, i) => (
-                <Picker.Item label={i.toString().padStart(2, "0")} value={i.toString().padStart(2, "0")} key={i} />
-              ))}
-            </Picker>
-
-            <View style={styles.switchContainer}>
-              <Text>Trạng thái:</Text>
-              <Switch value={newScheduleAction} onValueChange={setNewScheduleAction} />
-              <Text>{newScheduleAction ? "Mở" : "Đóng"}</Text>
-            </View>
-
-            <Button title="Lưu lịch" onPress={saveSchedule} />
-            <Button title="Đóng" onPress={() => setScheduleModalVisible(false)} />
-          </View>
-        </View>
-      </Modal>
-
       <StatusBar style="auto" />
     </View>
   );
@@ -267,7 +244,7 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
-    backgroundColor: '#d62d20',
+    backgroundColor: '#d62d20', // Màu đỏ cho header
     paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -278,22 +255,13 @@ const styles = StyleSheet.create({
   icon: {
     width: 50, 
     height: 50,
-    borderRadius: 25,
+    borderRadius: 25, // Giữ bo tròn nếu muốn
   },
   headerText: {
     marginTop: 5,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
-  },
-  scheduleButton: {
-    position: 'absolute',
-    right: 10,
-    top: 15,
-  },
-  scheduleIcon: {
-    width: 24,
-    height: 24,
   },
   content: {
     flex: 1,
@@ -308,7 +276,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     width: '85%',
     elevation: 5,
-    shadowColor: '#000',
+shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -366,24 +334,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ff4d4d',
     fontWeight: 'bold',
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    width: '80%',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
   },
 });

@@ -3,18 +3,21 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Switch, TouchableOpacity, Alert, Image } from 'react-native';
 import Voice from '@react-native-voice/voice'; 
 import Slider from '@react-native-community/slider'; 
+import { Picker } from '@react-native-picker/picker';
 import { database, ref, onValue, set } from './firebase';
 
 export default function App() {
   const [lightValue, setLightValue] = useState(0);
   const [temperatureValue, setTemperatureValue] = useState(0);
   const [activeLight, setActiveLight] = useState(false);
+  const [activeDistance, setActiveDistance] = useState(false);
   const [activeTemperature, setActiveTemperature] = useState(false);
-  const [ledState, setLedState] = useState(false);
   const [recognizedText, setRecognizedText] = useState('');
   const [commandMessage, setCommandMessage] = useState('');
   const [language, setLanguage] = useState('vi-VN');
   const [isRecording, setIsRecording] = useState(false);
+  const [mucValue, setMucValue] = useState(0); // Biến để lưu giá trị MUC
+
 
   useEffect(() => {
     const dbRef = ref(database, '/');
@@ -24,13 +27,20 @@ export default function App() {
         setLightValue(data.LIGHT);
         setTemperatureValue(data.TEMPERATURE);
         setActiveLight(data.ACTIVE_LIGHT === 1);
+        setActiveDistance(data.ACTIVE_DISTANCE === 1);
         setActiveTemperature(data.ACTIVE_TEMPERATURE === 1);
-        setLedState(data.LED === "ON");
+        setMucValue(data.MUC || 0); // Lấy giá trị MUC từ Firebase
+
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  const updateMucValue = (value) => {
+    setMucValue(value);
+    set(ref(database, 'MUC'), value); // Cập nhật giá trị MUC trên Firebase
+  };
 
   useEffect(() => {
     Voice.onSpeechResults = onSpeechResults;
@@ -44,31 +54,92 @@ export default function App() {
   const onSpeechResults = (event) => {
     const text = event.value[0];
     setRecognizedText(text);
+    setTimeout(() => {
+      setRecognizedText('');
+    }, 4000);
 
-    if (text.toLowerCase().includes("open") || text.toLowerCase().includes("mở")) {
-      setCommandMessage("Đã nhận được lệnh mở rèm");
-      toggleLedState(true);
-    } else if (text.toLowerCase().includes("close") || text.toLowerCase().includes("đóng")) {
-      setCommandMessage("Đã nhận được lệnh đóng rèm");
-      toggleLedState(false);
+    if (
+      (text.toLowerCase().includes("mở") &&
+      (text.toLowerCase().includes("toàn") ||
+      text.toLowerCase().includes("bộ") ||
+      text.toLowerCase().includes("cả") ||
+      text.toLowerCase().includes("hết")))
+      ||
+      (text.toLowerCase().includes("open") &&
+      text.toLowerCase().includes("all"))) {
+      setCommandMessage("Đã nhận được lệnh mở toàn bộ cửa");
+      setTimeout(() => {
+        setCommandMessage('');
+      }, 4000);
+      updateMucValue(2);
+    } 
+    else if (
+      (text.toLowerCase().includes("mở") && (
+      text.toLowerCase().includes("một") ||
+      text.toLowerCase().includes("hé") ||
+      text.toLowerCase().includes("tí") ||
+      text.toLowerCase().includes("nửa")))
+      ||
+      (text.toLowerCase().includes("open") &&
+      text.toLowerCase().includes("haft"))) {
+      setCommandMessage("Đã nhận được lệnh mở một nửa cửa");
+      setTimeout(() => {
+        setCommandMessage('');
+      }, 4000);
+      updateMucValue(1);
+    }
+    else if (text.toLowerCase().includes("open") || 
+      text.toLowerCase().includes("mở") ||
+      text.toLowerCase().includes("toàn") ||
+      text.toLowerCase().includes("bộ") ||
+      text.toLowerCase().includes("cả") ||
+      text.toLowerCase().includes("hết")
+    ) {
+      setCommandMessage("Đã nhận được lệnh mở toàn bộ cửa");
+      setTimeout(() => {
+        setCommandMessage('');
+      }, 4000);
+      updateMucValue(2);
+    }  
+    else if (text.toLowerCase().includes("một") || 
+      text.toLowerCase().includes("one") ||
+      text.toLowerCase().includes("hé") ||
+      text.toLowerCase().includes("tý") ||
+      text.toLowerCase().includes("nửa") ||
+      text.toLowerCase().includes("half")
+    ) {
+      setCommandMessage("Đã nhận được lệnh mở một nửa cửa");
+      setTimeout(() => {
+        setCommandMessage('');
+      }, 4000);
+      updateMucValue(1);
+    }  
+
+    else if (text.toLowerCase().includes("close") || text.toLowerCase().includes("đóng")) {
+      setCommandMessage("Đã nhận được lệnh đóng cửa");
+      setTimeout(() => {
+        setCommandMessage('');
+      }, 4000);
+      updateMucValue(0);
     }
   };
 
   const onSpeechError = (event) => {
-    Alert.alert('Lỗi', 'Đã xảy ra lỗi trong quá trình nhận diện giọng nói.');
+    // Alert.alert('Lỗi', 'Đã xảy ra lỗi trong quá trình nhận diện giọng nói.');
     setCommandMessage('Đã xảy ra lỗi trong quá trình nhận diện giọng nói.');
+    setTimeout(() => {
+      setCommandMessage('');
+    }, 4000);
   };
 
-  const toggleLedState = (newState) => {
-    setLedState(newState);
-    set(ref(database, 'LED'), newState ? "ON" : "OFF");
-  };
+
 
   const updateLightValue = (value) => setLightValue(Math.round(value));
   const updateTemperatureValue = (value) => setTemperatureValue(Math.round(value));
   const handleLightChangeComplete = () => set(ref(database, 'LIGHT'), lightValue);
   const handleTemperatureChangeComplete = () => set(ref(database, 'TEMPERATURE'), temperatureValue);
   const toggleActiveLight = (newValue) => set(ref(database, 'ACTIVE_LIGHT'), newValue ? 1 : 0);
+  const toggleActiveDistance = (newValue) => set(ref(database, 'ACTIVE_DISTANCE'), newValue ? 1 : 0);
   const toggleActiveTemperature = (newValue) => set(ref(database, 'ACTIVE_TEMPERATURE'), newValue ? 1 : 0);
 
   const startRecording = async () => {
@@ -97,14 +168,14 @@ export default function App() {
       <View style={styles.header}>
         <View style={styles.iconContainer}>
           <Image source={require('./assets/111.png')} style={styles.icon} />
-          <Text style={styles.headerText}>IOT NHÓM 1</Text>
+          <Text style={styles.headerText}>IOT QUÂN VÀ LONG</Text>
         </View>
       </View>
 
       {/* Main Content */}
       <View style={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.title}>LIGHT: {lightValue}</Text>
+          <Text style={styles.title}>Ngưỡng cảm biến ánh sáng: {lightValue}</Text>
           <Slider
             style={styles.slider}
             minimumValue={0}
@@ -117,7 +188,7 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>TEMPERATURE: {temperatureValue}</Text>
+          <Text style={styles.title}>Ngưỡng cảm biến nhiệt độ: {temperatureValue}</Text>
           <Slider
             style={styles.slider}
             minimumValue={0}
@@ -125,23 +196,42 @@ export default function App() {
             step={1}
             value={temperatureValue}
             onValueChange={updateTemperatureValue}
-            onSlidingComplete={handleTemperatureChangeComplete}
+onSlidingComplete={handleTemperatureChangeComplete}
           />
         </View>
 
         <View style={styles.card}>
           <View style={styles.switchContainer}>
-            <Text>ACTIVE LIGHT:</Text>
+            <Text>Bật cảm biến ánh sáng:</Text>
             <Switch value={activeLight} onValueChange={toggleActiveLight} />
-          </View>
+          </View>        
           <View style={styles.switchContainer}>
-            <Text>ACTIVE TEMPERATURE:</Text>
+            <Text>Bật cảm biến nhiệt độ:</Text>
             <Switch value={activeTemperature} onValueChange={toggleActiveTemperature} />
           </View>
           <View style={styles.switchContainer}>
-            <Text>LED:</Text>
-            <Switch value={ledState} onValueChange={() => toggleLedState(!ledState)} />
+            <Text>Bật cảm biến tiệm cận:</Text>
+            <Switch value={activeDistance} onValueChange={toggleActiveDistance} />
           </View>
+
+
+
+
+          {/* <View style={styles.card}> */}
+          <Text style={styles.title}>Chọn mức:</Text>
+          <Picker
+            selectedValue={mucValue}
+            style={{ height: 50, width: '100%' }}
+            onValueChange={(itemValue) => updateMucValue(itemValue)}
+          >
+            <Picker.Item label="Đóng cửa" value={0} />
+            <Picker.Item label="Mở một nửa" value={1} />
+            <Picker.Item label="Mở toàn bộ" value={2} />
+          </Picker>
+        {/* </View> */}
+
+
+
           <View style={styles.switchContainer}>
             <Text>Ngôn ngữ: {language === 'vi-VN' ? 'Tiếng Việt' : 'Tiếng Anh'}</Text>
             <Switch value={language === 'en-US'} onValueChange={() => setLanguage(language === 'vi-VN' ? 'en-US' : 'vi-VN')} />
@@ -210,7 +300,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     width: '85%',
     elevation: 5,
-    shadowColor: '#000',
+shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -270,4 +360,3 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-
